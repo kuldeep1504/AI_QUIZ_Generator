@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Quiz Generator - PulseQuiz</title>
+    <!-- Outfit & Plus Jakarta Sans Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="blob blob-purple"></div>
+        <div class="blob blob-cyan"></div>
+    </div>
+
+    <!-- User Profile Bar -->
+    <div class="profile-top-bar">
+        <div class="profile-user-info">
+            <div class="profile-avatar">
+                <span>{{ session.username[0]|upper if session.username else 'U' }}</span>
+            </div>
+            <span class="profile-username">Logged in as <strong>{{ session.username }}</strong></span>
+        </div>
+        <a href="/logout" class="profile-logout-btn" title="Sign Out">
+            <span>Sign Out</span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+        </a>
+    </div>
+
+    <main class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 18H11V16H13V18ZM15.07 10.74L14.17 11.65C13.45 12.37 13 13 13 15H11V14.5C11 13.4 11.45 12.4 12.17 11.67L13.41 10.41C13.78 10.05 14 9.55 14 9C14 7.9 13.1 7 12 7C10.9 7 10 7.9 10 9H8C8 6.79 9.79 5 12 5C14.21 5 16 6.79 16 9C16 9.68 15.72 10.3 15.07 10.74Z" fill="url(#grad)" />
+                    <defs>
+                        <linearGradient id="grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#a855f7" />
+                            <stop offset="100%" stop-color="#06b6d4" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span>PulseQuiz AI</span>
+            </div>
+            <p class="subtitle">Generate instant, custom multiple-choice quizzes using Llama 3.3 via Groq</p>
+        </header>
+
+        <!-- Dynamic Content Box -->
+        <div class="card card-main">
+            <!-- Setup Topic View -->
+            <section id="setup-view" class="view-section">
+                <h2>Ready to test your knowledge?</h2>
+                <p class="section-desc">Enter your subject and topic details below, choose difficulty level and question counts. Our AI will curate custom tailored questions for you.</p>
+                
+                <div class="setup-form-grid">
+                    <div class="input-group">
+                        <label for="subject-input">Subject / Domain</label>
+                        <input type="text" id="subject-input" placeholder="e.g., Computer Science, Physics, History..." autocomplete="off">
+                    </div>
+                    <div class="input-group">
+                        <label for="topic-input">Quiz Topic</label>
+                        <input type="text" id="topic-input" placeholder="e.g., Python OOP, Quantum Mechanics, World War II..." autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="setup-config-grid">
+                    <div class="input-group level-select-group">
+                        <label>Difficulty Level</label>
+                        <div class="segmented-control">
+                            <button type="button" class="segment-btn segment-level-btn" data-value="Beginner">Beginner</button>
+                            <button type="button" class="segment-btn segment-level-btn active" data-value="Intermediate">Intermediate</button>
+                            <button type="button" class="segment-btn segment-level-btn" data-value="Advanced">Advanced</button>
+                        </div>
+                    </div>
+                    <div class="input-group count-select-group">
+                        <label>Number of Questions</label>
+                        <div class="segmented-control">
+                            <button type="button" class="segment-btn segment-count-btn active" data-value="5">5 Qs</button>
+                            <button type="button" class="segment-btn segment-count-btn" data-value="10">10 Qs</button>
+                            <button type="button" class="segment-btn segment-count-btn" data-value="15">15 Qs</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="btn btn-primary generate-submit-btn">
+                    <span>Generate Quiz</span>
+                    <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </button>
+
+                <div id="setup-error" class="error-msg hidden"></div>
+            </section>
+
+            <!-- Loading View -->
+            <section id="loading-view" class="view-section hidden">
+                <div class="loader-content">
+                    <div class="spinner-ring">
+                        <div class="spinner-core"></div>
+                    </div>
+                    <h3 id="loading-title">Drafting your questions...</h3>
+                    <p class="loading-desc">Groq AI is assembling custom MCQs for you.</p>
+                </div>
+            </section>
+
+            <!-- Quiz Active View -->
+            <section id="quiz-view" class="view-section hidden">
+                <div class="quiz-header">
+                    <h2 id="quiz-topic-title" class="gradient-text">Topic: Python OOP</h2>
+                    <div class="progress-bar-container">
+                        <div id="quiz-progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <form id="quiz-form">
+                    <div id="questions-container">
+                        <!-- Questions will be injected here by Javascript -->
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" id="submit-quiz-btn" class="btn btn-success">
+                            <span>Submit Quiz</span>
+                            <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Results View -->
+            <section id="results-view" class="view-section hidden">
+                <div class="results-header">
+                    <h2>Quiz Completed!</h2>
+                    
+                    <div class="score-display">
+                        <div class="score-circle">
+                            <span id="score-value">4</span>
+                            <span class="score-total" id="score-total">/ 5</span>
+                        </div>
+                        <div class="score-message">
+                            <h3 id="score-grade">Excellent Work!</h3>
+                            <p id="score-desc">You demonstrated an outstanding grasp of this topic.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="review-title">
+                    <h3>Review Answers</h3>
+                </div>
+
+                <div id="results-container">
+                    <!-- Dynamic review questions injected here -->
+                </div>
+
+                <div class="results-actions">
+                    <button id="retry-btn" class="btn btn-secondary">
+                        <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        <span>Try Another Quiz</span>
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- Collapsible Quiz History Card -->
+        <div class="card card-history" id="history-card">
+            <div class="history-card-header">
+                <div class="history-title-group">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="history-icon">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <h3>My Quiz Performance History</h3>
+                </div>
+                <button id="toggle-history-btn" class="history-toggle-btn">
+                    <span>Show History</span>
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+            </div>
+            <div id="history-card-content" class="history-content hidden">
+                <div class="history-divider"></div>
+                <div id="history-items-container">
+                    <!-- Items populated dynamically by JS -->
+                    <p class="history-empty-text">Loading history...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        <p>Powered by Flask, MongoDB, and Groq Llama 3.3</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
