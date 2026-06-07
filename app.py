@@ -1,39 +1,15 @@
 import os
 import json
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, session
 from dotenv import load_dotenv
 from groq import Groq
-from pymongo import MongoClient
-from werkzeug.security import generate_password_hash, check_password_hash
 
 # Load environment variables
 load_dotenv(override=True)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-1234567890-quiz-app")
-
-# MongoDB connection configuration
-mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/quiz_db")
-db_name = 'quiz_db'
-
-# Extract database name from connection URI if present (useful for Atlas URIs)
-try:
-    if '/' in mongo_uri.split('//')[-1]:
-        path = mongo_uri.split('//')[-1].split('/', 1)[-1]
-        if '?' in path:
-            path = path.split('?', 1)[0]
-        if path:
-            db_name = path
-except Exception:
-    pass
-
-mongo_client = MongoClient(mongo_uri)
-db = mongo_client[db_name]
-
-# Helper to check if a user is logged in
-def is_logged_in():
-    return 'user_id' in session
 
 # Initialize Groq client
 def get_groq_client():
@@ -46,83 +22,12 @@ def get_groq_client():
 
 @app.route('/')
 def index():
-    if not is_logged_in():
-        return redirect(url_for('auth_page'))
     return render_template('index.html')
-
-@app.route('/auth')
-def auth_page():
-    if is_logged_in():
-        return redirect(url_for('index'))
-    return render_template('auth.html')
-
-# ----------------- AUTHENTICATION API ENDPOINTS -----------------
-
-@app.route('/register', methods=['POST'])
-def register():
-    data = request.get_json()
-    if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'error': 'Please provide a username and password.'}), 400
-
-    username = data.get('username').strip()
-    password = data.get('password')
-
-    if len(username) < 3:
-        return jsonify({'error': 'Username must be at least 3 characters long.'}), 400
-    if len(password) < 6:
-        return jsonify({'error': 'Password must be at least 6 characters long.'}), 400
-
-    # Check if username already exists
-    existing_user = db.users.find_one({"username": {"$regex": f"^{username}$", "$options": "i"}})
-    if existing_user:
-        return jsonify({'error': 'Username is already taken.'}), 400
-
-    # Insert new user with hashed password
-    hashed_password = generate_password_hash(password)
-    user_doc = {
-        "username": username,
-        "password": hashed_password,
-        "created_at": datetime.utcnow()
-    }
-    
-    try:
-        result = db.users.insert_one(user_doc)
-        # Log the user in automatically
-        session['user_id'] = str(result.inserted_id)
-        session['username'] = username
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': f'Failed to create account: {str(e)}'}), 500
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    if not data or not data.get('username') or not data.get('password'):
-        return jsonify({'error': 'Please enter both username and password.'}), 400
-
-    username = data.get('username').strip()
-    password = data.get('password')
-
-    user = db.users.find_one({"username": {"$regex": f"^{username}$", "$options": "i"}})
-    if not user or not check_password_hash(user['password'], password):
-        return jsonify({'error': 'Invalid username or password.'}), 401
-
-    session['user_id'] = str(user['_id'])
-    session['username'] = user['username']
-    return jsonify({'success': True})
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('auth_page'))
 
 # ----------------- QUIZ API ENDPOINTS -----------------
 
 @app.route('/generate-quiz', methods=['POST'])
 def generate_quiz():
-    if not is_logged_in():
-        return jsonify({'error': 'Unauthorized. Please log in first.'}), 401
-
     client = get_groq_client()
     if not client:
         return jsonify({
@@ -211,9 +116,6 @@ def generate_quiz():
 
 @app.route('/submit-quiz', methods=['POST'])
 def submit_quiz():
-    if not is_logged_in():
-        return jsonify({'error': 'Unauthorized. Please log in first.'}), 401
-
     data = request.get_json()
     if not data or 'answers' not in data:
         return jsonify({'error': 'No answers provided.'}), 400
@@ -244,45 +146,11 @@ def submit_quiz():
             'is_correct': is_correct
         })
         
-    # Save the score history record to MongoDB
-    history_record = {
-        "user_id": session['user_id'],
-        "username": session['username'],
-        "topic": topic,
-        "score": score,
-        "total": len(stored_questions),
-        "timestamp": datetime.utcnow()
-    }
-    
-    try:
-        db.history.insert_one(history_record)
-    except Exception as e:
-        print(f"Database insertion failed: {e}")
-        
     return jsonify({
         'score': score,
         'total': len(stored_questions),
         'results': results
     })
-
-@app.route('/quiz-history', methods=['GET'])
-def get_quiz_history():
-    if not is_logged_in():
-        return jsonify({'error': 'Unauthorized. Please log in first.'}), 401
-
-    try:
-        records = db.history.find({"user_id": session['user_id']}).sort("timestamp", -1)
-        history_list = []
-        for rec in records:
-            history_list.append({
-                "topic": rec.get("topic", "Unknown"),
-                "score": rec.get("score", 0),
-                "total": rec.get("total", 5),
-                "timestamp": rec.get("timestamp").strftime("%b %d, %Y - %I:%M %p") if rec.get("timestamp") else "N/A"
-            })
-        return jsonify({'history': history_list})
-    except Exception as e:
-        return jsonify({'error': f'Failed to retrieve history: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=True)
